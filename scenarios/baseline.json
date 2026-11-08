@@ -1,0 +1,11 @@
+{
+  "name": "baseline",
+  "days": 30,
+  "residents": 6,
+  "initial_fish_units": 2000,
+  "fishing_abundance_percent": 100,
+  "nets_enabled": true,
+  "shock_enabled": false,
+  "parent_hash": null,
+  "rules_version": "0.1.0"
+}
