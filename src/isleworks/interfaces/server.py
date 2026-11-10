@@ -6,9 +6,9 @@ import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, unquote
 
-from isleworks.analysis import build_metrics
+from isleworks.analysis import build_metrics, build_statistics
 from isleworks.config import configured_review_gateway
 from isleworks.domain import ScenarioConfig
 from isleworks.interfaces.cli import scenario
@@ -91,7 +91,71 @@ def make_server(store: Store, port: int = 8765, *, review_factory=None):
                 elif url.path == "/api/runs":
                     self.send({"runs": store.list_runs()})
                 elif url.path.startswith("/api/runs/"):
-                    run_id = url.path.split("/")[3]
+                    parts = url.path.strip("/").split("/")
+                    if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "observer":
+                        run_id = parts[2]
+                        run = store.run(run_id)
+                        requested = parse_qs(url.query).get("day", ["last"])[0]
+                        day = None if requested == "last" else int(requested)
+                        archive = store.statistics_archive(run_id, day)
+                        selected = store.day(run_id, archive["days"][-1]["state"]["day"])
+                        cutoff = selected["state"]["day"]
+                        stats = build_statistics(ScenarioConfig.from_dict(run["config"]), archive, as_of_day=cutoff)
+                        residents = selected["state"]["residents"]
+                        plans = selected["plans"]
+                        ids = list(residents)
+                        sample_ids = ids if len(ids) <= 24 else [ids[(i * len(ids)) // 24] for i in range(24)]
+                        samples = {rid: residents[rid] for rid in sample_ids}
+                        sample_plans = {rid: plans[rid] for rid in sample_ids if rid in plans}
+                        groups = stats["daily"][-1]["planned_activity_counts"]
+                        counts = {key: 0 for key in ("fish", "gather", "craft", "rest", "other")}
+                        if groups is not None:
+                            for key, value in groups.items():
+                                counts[key if key in counts else "other"] += value
+                        events = archive["events"]
+                        last = archive["last_committed_day"]
+                        run["day"] = last
+                        final_view = cutoff == last
+                        facts = store.review(run_id) if final_view else None
+                        llm = store.latest_model_review(run_id) if final_view else None
+                        if final_view and run["status"] in ("completed", "collapsed") and llm is None:
+                            llm = ({"status": "pending", "mode": "llm", "summary": "世界已完成，正在准备自动复盘。"}
+                                   if run["metadata"].get("automatic_review") else
+                                   {"status": "unavailable", "mode": "llm", "error_detail": {
+                                    "code": "no_automatic_review", "message": "该运行未启用自动模型复盘。"}})
+                        self.send({"run": run, "state": {"day": cutoff, "residents": samples},
+                                   "plans": sample_plans, "decisions": store.observer_decisions(run_id, cutoff, sample_ids),
+                                   "population": {"total": len(ids), "sample_size": len(sample_ids),
+                                                  "counts": counts if groups is not None else None,
+                                                  "planned": sum(groups.values()) if groups is not None else None},
+                                   "metrics": {"metrics": stats["totals"],
+                                               "daily": {str(row["day"]): row for row in stats["daily"]}},
+                                   "recent_events": events[-40:], "facts_report": facts, "llm_review": llm})
+                        return
+                    if len(parts) == 5 and parts[:2] == ["api", "runs"] and parts[3] == "residents":
+                        run_id, resident_id = parts[2], unquote(parts[4])
+                        requested = parse_qs(url.query).get("day", ["last"])[0]
+                        day = None if requested == "last" else int(requested)
+                        selected = store.day(run_id, day)
+                        resident = selected["state"]["residents"].get(resident_id)
+                        if resident is None:
+                            raise KeyError("Unknown resident")
+                        selected_day = selected["state"]["day"]
+                        self.send({"run_id": run_id, "day": selected_day, "resident": resident,
+                                   "plan": selected["plans"].get(resident_id),
+                                   "decision": store.observer_decisions(run_id, selected_day, [resident_id]).get(resident_id)})
+                        return
+                    if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "statistics":
+                        run_id = parts[2]
+                        run = store.run(run_id)
+                        query = parse_qs(url.query)
+                        requested = query.get("day", ["last"])[0]
+                        day = None if requested == "last" else int(requested)
+                        archive = store.statistics_archive(run_id, day)
+                        self.send(build_statistics(ScenarioConfig.from_dict(run["config"]), archive,
+                                                   as_of_day=day))
+                        return
+                    run_id = parts[2]
                     run = store.run(run_id)
                     latest = store.day(run_id)
                     query = parse_qs(url.query)
@@ -123,13 +187,15 @@ def make_server(store: Store, port: int = 8765, *, review_factory=None):
                                "review": llm_review or facts_report})
                 else:
                     filename = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js",
-                                "/review.js": "review.js", "/style.css": "style.css"}.get(url.path)
+                                "/review.js": "review.js", "/style.css": "style.css",
+                                "/pixel-scene.js": "pixel-scene.js", "/statistics.html": "statistics.html",
+                                "/statistics.js": "statistics.js", "/statistics.css": "statistics.css"}.get(url.path)
                     if filename is None:
                         self.send({"error": "Not found"}, 404)
                         return
                     body = (web / filename).read_bytes()
                     self.send_response(200)
-                    self.send_header("Content-Type", {"index.html":"text/html; charset=utf-8", "app.js":"text/javascript; charset=utf-8", "review.js":"text/javascript; charset=utf-8", "style.css":"text/css; charset=utf-8"}[filename])
+                    self.send_header("Content-Type", {"index.html":"text/html; charset=utf-8", "app.js":"text/javascript; charset=utf-8", "review.js":"text/javascript; charset=utf-8", "style.css":"text/css; charset=utf-8", "pixel-scene.js":"text/javascript; charset=utf-8", "statistics.html":"text/html; charset=utf-8", "statistics.js":"text/javascript; charset=utf-8", "statistics.css":"text/css; charset=utf-8"}[filename])
                     self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
                     self.send_header("X-Content-Type-Options", "nosniff")
                     self.end_headers()

@@ -88,3 +88,96 @@ def build_metrics(config, initial_state, final_state, events):
             "facts": {"initial_day": initial["day"], "final_day": days,
                       "fish_unit": "0.001 fish", "initial_food": sum(r["fish"] for r in initial["residents"].values()),
                       "rules_version": config_data["rules_version"]}}
+
+
+def _primary_activity(labor):
+    """Return a resident's primary activity, preserving first-place order on ties."""
+    if not labor:
+        return None
+    counts = Counter(labor)
+    maximum = max(counts.values())
+    return next(action for action in labor if counts[action] == maximum)
+
+
+def build_statistics(config, archive, *, as_of_day=None):
+    """Build the observer's daily statistics from committed archive data only.
+
+    ``archive`` is the value returned by :meth:`Store.archive`.  The function
+    intentionally does not inspect decisions or call a model: plans are the
+    committed ``intents`` and execution is the committed event ledger.  A
+    ``None`` value means that a measurement is unavailable; an empty mapping
+    means the measurement was available but no matching activity occurred.
+    """
+    days = archive["days"]
+    if not days:
+        raise ValueError("Run has no committed days")
+    latest = days[-1]
+    last_committed_day = archive.get("last_committed_day", latest["state"]["day"])
+    if as_of_day is None:
+        cutoff = last_committed_day
+    else:
+        if type(as_of_day) is not int or as_of_day < 0 or as_of_day > last_committed_day:
+            raise ValueError("Unknown committed day")
+        cutoff = as_of_day
+    selected = next((day for day in days if day["state"]["day"] == cutoff), None)
+    if selected is None:
+        raise ValueError("Unknown committed day")
+    bounded_days = [day for day in days if day["state"]["day"] <= cutoff]
+    events = [event for day in bounded_days for event in day.get("events", [])]
+    metrics = build_metrics(config, days[0]["state"], selected["state"], events)
+    daily_metrics = metrics["daily"]
+    daily_intents = {
+        day["state"]["day"]: day.get("intents")
+        for day in bounded_days
+    }
+    events_by_day = defaultdict(list)
+    for event in events:
+        events_by_day[event["day"]].append(event)
+
+    daily = []
+    for day in range(cutoff + 1):
+        row = dict(daily_metrics[str(day)])
+        # Keep the daily contract rectangular.  Day zero has no event totals,
+        # so those values are known zero rather than missing measurements.
+        for key in ("food_produced", "food_consumed", "shortage", "trades", "nets_made"):
+            row.setdefault(key, 0)
+        if day == 0:
+            planned = None
+        else:
+            intents = daily_intents.get(day)
+            if not intents:
+                planned = None
+            else:
+                planned = {}
+                for intent in intents:
+                    activity = _primary_activity(intent.get("labor", ()))
+                    if activity is not None:
+                        planned[activity] = planned.get(activity, 0) + 1
+
+        day_events = events_by_day.get(day, [])
+        executed = None if not day_events else {}
+        if executed is not None:
+            for event in day_events:
+                if event.get("kind") in ("fish", "gather", "craft", "rest"):
+                    blocks = event.get("data", {}).get("blocks", 1)
+                    executed[event["kind"]] = executed.get(event["kind"], 0) + blocks
+        row["day"] = day
+        row["planned_activity_counts"] = planned
+        row["executed_labor_blocks"] = executed
+        daily.append(row)
+
+    return {
+        "run_id": archive["run"]["id"],
+        "as_of_day": cutoff,
+        "last_committed_day": last_committed_day,
+        "metric_version": "1",
+        "status": archive["run"]["status"],
+        "source": {
+            "planned_activity_counts": "committed day intents; ties use first labor block",
+            "executed_labor_blocks": "committed labor events",
+            "resources": "committed event deltas and selected state",
+        },
+        "units": {"food": "fish_units (0.001 fish)", "fiber": "fiber_units", "labor": "blocks"},
+        "daily": daily,
+        "totals": metrics["metrics"],
+    }

@@ -217,6 +217,59 @@ class Store:
         return {"run": run, "days": days, "events": [event for day in days for event in day["events"]],
                 "calls": self.calls(run_id), "decisions": [{"day": row[0], "resident_id": row[1], **json.loads(row[2])} for row in decisions]}
 
+    def statistics_archive(self, run_id: str, day: int | None = None) -> dict[str, Any]:
+        """Read the bounded, immutable input needed by the observer statistics.
+
+        Unlike :meth:`archive`, this method never loads decisions, model calls,
+        or days after the requested cutoff.  State snapshots are still parsed
+        and hash-checked so a damaged historical snapshot cannot silently
+        produce a plausible chart.
+        """
+        run = self.run(run_id)
+        with self.connect() as db:
+            latest_row = db.execute("SELECT MAX(day) FROM days WHERE run_id=?", (run_id,)).fetchone()
+            last_committed_day = latest_row[0]
+            if last_committed_day is None:
+                raise ArchiveError("Run has no committed days")
+            cutoff = last_committed_day if day is None else day
+            if type(cutoff) is not int or cutoff < 0 or cutoff > last_committed_day:
+                raise ArchiveError("Unknown committed day")
+            rows = db.execute(
+                "SELECT body FROM days WHERE run_id=? AND day<=? ORDER BY day", (run_id, cutoff)
+            ).fetchall()
+        days = []
+        for row in rows:
+            value = json.loads(row[0])
+            state = WorldState.from_dict(value["state"])
+            if state.state_hash != value.get("state_hash"):
+                raise ArchiveError("Corrupt state hash")
+            if state.day != len(days):
+                raise ArchiveError("Missing or out-of-order committed day")
+            days.append(value)
+        if not days or days[-1]["state"]["day"] != cutoff:
+            raise ArchiveError("Unknown committed day")
+        return {
+            "run": run,
+            "days": days,
+            "events": [event for committed in days for event in committed.get("events", [])],
+            "last_committed_day": last_committed_day,
+        }
+
+    def observer_decisions(self, run_id: str, day: int, resident_ids: list[str]) -> dict[str, Any]:
+        """Read only the selected residents' decision metadata for one day."""
+        if not resident_ids:
+            return {}
+        with self.connect() as db:
+            result = {}
+            for resident_id in resident_ids:
+                row = db.execute("SELECT body FROM decisions WHERE run_id=? AND day=? AND resident_id=?",
+                                 (run_id, day, resident_id)).fetchone()
+                if row:
+                    decision = json.loads(row[0])
+                    result[resident_id] = {"status": decision.get("status"), "source": decision.get("source"),
+                                           "failure_reason": (decision.get("failure") or {}).get("reason")}
+        return result
+
     def claim_review(self, run_id: str, version: str, initial: dict[str, Any] | None = None) -> None:
         """Unique durable claim prevents concurrent reviewers spending separate budgets."""
         with self.connect() as db:

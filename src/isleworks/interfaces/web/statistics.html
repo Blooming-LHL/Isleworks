@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Isleworks · 数据统计</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/statistics.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="mark">◒</span>Isleworks</div>
+    <div class="tagline">数据统计 · 让岛屿的变化可被复盘</div>
+    <nav class="stats-nav" aria-label="页面导航"><a id="home-link" href="/">岛屿观察</a><a class="active" href="/statistics.html">数据统计</a></nav>
+  </header>
+  <main class="shell statistics-shell">
+    <section class="stats-intro"><p class="eyebrow">ISLAND LEDGER</p><h1>一座岛的日常，<em>可以被看见。</em></h1><p class="lede">只展示已经提交的世界状态；选择过去的日子，回看资源、人口和劳动如何一起变化。</p></section>
+    <section class="panel stats-toolbar" aria-label="统计筛选">
+      <label for="run-select">观测运行</label><select id="run-select"><option>加载中…</option></select>
+      <label for="day-slider">截至第 <output id="day-output">—</output> 日</label><input id="day-slider" type="range" min="0" max="0" value="0" disabled>
+      <button id="latest" class="button" type="button">最新</button><span id="run-status" class="status-pill">读取中…</span>
+    </section>
+    <div id="error" class="alert hidden" role="alert"></div><div id="loading" class="loading">正在读取岛屿资料…</div>
+    <div id="dashboard" class="hidden">
+      <p id="snapshot-note" class="snapshot-note"></p>
+      <section id="stat-cards" class="stat-cards" aria-label="关键指标"></section>
+      <section class="chart-grid">
+        <article class="panel chart-panel"><div class="heading"><div><div class="kicker">FOOD STOCK</div><h2>食物存量</h2></div><span class="muted">单位：鱼</span></div><div id="food-chart" class="chart" role="img" aria-label="食物存量折线图"></div></article>
+        <article class="panel chart-panel"><div class="heading"><div><div class="kicker">SUPPLY FLOW</div><h2>产出与消耗</h2></div><span class="muted">单位：鱼</span></div><div id="flow-chart" class="chart" role="img" aria-label="食物产出与消耗折线图"></div></article>
+        <article class="panel chart-panel"><div class="heading"><div><div class="kicker">PEOPLE</div><h2>活跃人口</h2></div><span class="muted">单位：人</span></div><div id="people-chart" class="chart" role="img" aria-label="活跃人口折线图"></div></article>
+        <article class="panel chart-panel"><div class="heading"><div><div class="kicker">SCARCITY</div><h2>缺粮</h2></div><span class="muted">单位：鱼</span></div><div id="shortage-chart" class="chart" role="img" aria-label="缺粮折线图"></div></article>
+        <article class="panel chart-panel"><div class="heading"><div><div><div class="kicker">ACTIVITY</div><h2>居民活动</h2></div></div><div class="toggle" role="group" aria-label="活动数据类型"><button type="button" data-mode="planned" class="active">计划人数</button><button type="button" data-mode="executed">已执行劳动</button></div></div><div id="activity-chart" class="chart" role="img" aria-label="居民活动折线图"></div><p id="activity-unit" class="chart-footnote">单位：人</p><details class="activity-details"><summary>查看每日活动明细</summary><div class="table-scroll"><table id="activity-table"><caption class="sr-only">每日活动数据</caption><thead></thead><tbody></tbody></table></div></details></article>
+      </section>
+      <section class="panel table-panel"><div class="heading"><div><div class="kicker">DAILY RECORD</div><h2>逐日记录</h2></div><span class="muted">— 表示该日没有记录，不等同于 0</span></div><div class="table-scroll"><table id="data-table"><caption class="sr-only">岛屿每日统计记录</caption><thead></thead><tbody></tbody></table></div></section>
+    </div>
+  </main>
+  <footer>Isleworks · 可复现的规则模拟观测台</footer>
+  <script src="/statistics.js" defer></script>
+</body>
+</html>
