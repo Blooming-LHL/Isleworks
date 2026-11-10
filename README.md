@@ -2,7 +2,7 @@
 
 一个受《小岛经济学》启发的经济模拟实验：6 位居民在资源与时间约束下捕鱼、采集、制造渔网和交易，运行 30 个模拟日。
 
-项目目录：`/Users/lhl/Projects/Isleworks`。设计方案见 [MVP v0.1](docs/自主经济模拟系统_MVP_v0.1.md)，实现进度见 [实施记录](docs/IMPLEMENTATION.md)。
+项目目录：`/Users/lhl/Projects/Isleworks`。设计方案见 [MVP v0.1](docs/product-specs/自主经济模拟系统_MVP_v0.1.md)，实现进度见 [实施记录](docs/exec-plans/completed/IMPLEMENTATION.md)。
 
 ## 本地启动
 

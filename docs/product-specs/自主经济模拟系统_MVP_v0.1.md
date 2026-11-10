@@ -1,7 +1,7 @@
 # Isleworks：自主经济模拟系统 MVP v0.1 设计方案
 
 日期：2026-11-06。  
-状态：已确认并开始实施；当前实现与待验收范围见 [实施记录](IMPLEMENTATION.md)。  
+状态：已确认并开始实施；当前实现与待验收范围见 [实施记录](../exec-plans/completed/IMPLEMENTATION.md)。  
 项目名称：Isleworks。  
 项目目录：`/Users/lhl/Projects/Isleworks`。AlongSite 为独立博客项目，不属于本方案的实现目录。
 
